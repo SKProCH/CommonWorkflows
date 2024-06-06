@@ -8,33 +8,39 @@ using System.Threading;
 using System.Threading.Tasks;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
+using NuGet.Versioning;
 using Nuke.Common;
 using Nuke.Common.CI;
+using Nuke.Common.CI.GitHubActions;
 using Nuke.Common.Execution;
+using Nuke.Common.Git;
 using Nuke.Common.IO;
 using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
 using Nuke.Common.Tools.Git;
+using Nuke.Common.Tools.GitHub;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
+using Octokit;
+using Octokit.Internal;
 using Serilog;
 using Utils;
 using static Nuke.Common.EnvironmentInfo;
 using static Nuke.Common.IO.FileSystemTasks;
 using static Nuke.Common.IO.PathConstruction;
+using Repository = NuGet.Protocol.Core.Types.Repository;
 
 class Build : NukeBuild
 {
-    [Parameter(Name = "dry-run")]
-    public bool IsDryRun { get; set; }
-    
-    [Parameter(Name = "nuget-feed-url")]
+    [Nuke.Common.Parameter(Name = "dry-run")] public bool IsDryRun { get; set; }
+
+    [Nuke.Common.Parameter(Name = "nuget-feed-url")]
     public string NuGetFeedUrl { get; set; } = "https://api.nuget.org/v3/index.json";
-    
-    [Secret]
-    [Parameter(Name = "nuget-api-key")]
-    public string? NuGetApiKey { get; set; }
-    
+
+    [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NuGetApiKey { get; set; }
+
+    [Nuke.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
+
     /// Support plugins are available for:
     ///   - JetBrains ReSharper        https://nuke.build/resharper
     ///   - JetBrains Rider            https://nuke.build/rider
@@ -67,11 +73,58 @@ class Build : NukeBuild
                 .Where(s => s is not null)
                 .ToImmutableArray();
             Log.Information("Found {Count} packages: \n{Files}", packageNames.Length, string.Join("\n", packageNames));
-            
+
             var nuget = Repository.Factory.GetCoreV3(NuGetFeedUrl);
             foreach (var packageName in packageNames)
             {
                 await HideOutdatedPackages(nuget, oldVersions, packageName!);
+            }
+        });
+
+    Target CreateRelease => _ => _
+        .Executes(async () =>
+        {
+            ArgumentNullException.ThrowIfNull(Tag);
+
+            var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
+
+            var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
+            var credentials = new Credentials(GitHubActions.Instance.Token);
+            GitHubTasks.GitHubClient = new GitHubClient(
+                new ProductHeaderValue(nameof(NukeBuild)),
+                new InMemoryCredentialStore(credentials));
+
+            var releaseNotes = await GitHubTasks.GitHubClient.Repository.Release
+                .GenerateReleaseNotes(owner, name, new GenerateReleaseNotesRequest(Tag));
+
+            Release? oldRelease = null;
+            try
+            {
+                oldRelease = await GitHubTasks.GitHubClient.Repository.Release.Get(owner, name, Tag);
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+
+            var nuGetVersion = NuGetVersion.Parse(Tag.Trim('v'));
+            if (oldRelease is not null)
+            {
+                Log.Information("Editing release {TagName}", Tag);
+                var releaseUpdate = new ReleaseUpdate
+                    { Body = releaseNotes.Body, Name = Tag, Prerelease = nuGetVersion.IsPrerelease };
+                await GitHubTasks.GitHubClient.Repository.Release.Edit(owner, name, oldRelease.Id, releaseUpdate);
+            }
+            else
+            {
+                Log.Information("Creating release {TagName}", Tag);
+                var newRelease = new NewRelease(Tag)
+                {
+                    Name = Tag,
+                    GenerateReleaseNotes = true,
+                    Prerelease = nuGetVersion.IsPrerelease
+                };
+                await GitHubTasks.GitHubClient.Repository.Release.Create(owner, name, newRelease);
             }
         });
 
@@ -82,8 +135,10 @@ class Build : NukeBuild
             .FirstOrDefault(entry => !entry.FullName.Contains('/') && entry.FullName.EndsWith(".nuspec"))
             ?.Name.TrimEnd(".nuspec");
     }
-    
-    public async Task HideOutdatedPackages(SourceRepository sourceRepository, IReadOnlyCollection<string> oldVersions, string packageName) {
+
+    public async Task HideOutdatedPackages(SourceRepository sourceRepository, IReadOnlyCollection<string> oldVersions,
+        string packageName)
+    {
         Log.Information("Retrieving nightly packages version for {PackageName} to hide", packageName);
         var resource = await sourceRepository.GetResourceAsync<PackageMetadataResource>();
         var parametersNugetPackages = await resource.GetMetadataAsync(
@@ -98,16 +153,17 @@ class Build : NukeBuild
             .Where(metadata => metadata.Identity.HasVersion)
             .Where(metadata => oldVersions.Any(oldVersion => metadata.Identity.Version.ToString().Contains(oldVersion)))
             .Where(metadata => metadata.Identity.Version.IsNightly());
-        foreach (var outdatedVersion in outdatedVersions) {
+        foreach (var outdatedVersion in outdatedVersions)
+        {
             Log.Information("Hiding previous nightly version {Version}", outdatedVersion.Identity.Version.ToString());
             if (IsDryRun)
                 continue;
-            
+
             var packageUpdateResource = await sourceRepository.GetResourceAsync<PackageUpdateResource>();
             await packageUpdateResource.Delete(packageName, outdatedVersion.Identity.Version.ToString(),
                 _ => NuGetApiKey, _ => true, false, NugetLogger.Instance);
         }
-                
+
         Log.Information("All previous nightly version for {PackageName} was hidden", packageName);
     }
 }
