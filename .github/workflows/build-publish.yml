@@ -54,7 +54,8 @@ jobs:
         run: dotnet tool install --global minver-cli
       - name: 'Resolve version'
         run: |
-          VERSION = $(minver -t v -p nightly)
+          minver -t v -p nightly -v info
+          VERSION=$(minver -t v -p nightly -v error)
           echo "Version=VERSION" >> $GITHUB_ENV
           if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
             echo "HasTag=true" >> $GITHUB_ENV
@@ -74,7 +75,7 @@ jobs:
             echo "No tag found on the current commit."
             RELEASE_DESCRIPTION=$(git log -1 --pretty=%B)
             URL=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/$(git rev-parse HEAD)
-            ESCAPED = $(printf '%q' "This version based on commit ${URL}\n\n${RELEASE_DESCRIPTION}")
+            ESCAPED=$(printf '%q' "This version based on commit ${URL}\n\n${RELEASE_DESCRIPTION}")
             echo "ReleaseNotes=${ESCAPED}" >> $GITHUB_ENV
           fi
         env:
