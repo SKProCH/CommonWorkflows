@@ -56,7 +56,7 @@ jobs:
         run: |
           minver -t v -p nightly -v info
           VERSION=$(minver -t v -p nightly -v error)
-          echo "Version=VERSION" >> $GITHUB_ENV
+          echo "Version=${VERSION}" >> $GITHUB_ENV
           if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
             echo "HasTag=true" >> $GITHUB_ENV
             echo "Tag found: ${TAG_NAME}"
