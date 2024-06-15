@@ -20,8 +20,6 @@ on:
         required: false
         type: string
     secrets:
-      GITHUB_TOKEN:
-        required: true
       NUGET_KEY:
         required: true
 
@@ -57,7 +55,7 @@ jobs:
         run: dotnet tool install --global minver-cli0
       - name: 'Resolve version'
         run: |
-          VERSION = $(minver)
+          VERSION = $(minver -t v -p nightly)
           echo "Version=VERSION" >> $GITHUB_ENV
           if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
             echo "HasTag=true" >> $GITHUB_ENV
