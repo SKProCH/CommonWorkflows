@@ -90,6 +90,7 @@ jobs:
         run: ${{ inputs.build-command }} /p:Version=${{ env.Version }} /p:PackageReleaseNotes=${{ env.ReleaseNotes }}
         
       - name: Publish to Nuget
+        if: "${{ env.HasTag == 'true' || inputs.publish-nightly }}"
         run: |
           dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
           dotnet nuget push "**/*.snupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
