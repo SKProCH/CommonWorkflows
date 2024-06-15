@@ -51,7 +51,7 @@ jobs:
         if: "${{ inputs.workloads != '' }}"
         run: dotnet workload install ${{ inputs.workloads }}
       - name: 'Install minver'
-        run: dotnet tool install --global minver-cli0
+        run: dotnet tool install --global minver-cli
       - name: 'Resolve version'
         run: |
           VERSION = $(minver -t v -p nightly)
