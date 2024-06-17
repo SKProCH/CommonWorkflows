@@ -83,7 +83,7 @@ jobs:
 
       - name: Build project
         if: "${{ inputs.build-command == '' }}"
-        run: dotnet pack /p:Version=${{ env.Version }} /p:PackageReleaseNotes=${{ env.ReleaseNotes }}
+        run: dotnet pack /p:Version=${{ env.Version }} /p:PackageReleaseNotes="${{ env.ReleaseNotes }}"
 
       - name: Custom build
         if: "${{ inputs.build-command != '' }}"
