@@ -59,8 +59,8 @@ jobs:
           echo "Version=${VERSION}" >> $GITHUB_ENV
           if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
             echo "HasTag=true" >> $GITHUB_ENV
-            echo "Tag found: ${TAG_NAME}"
             TAG_NAME=$(git describe --tags $(git rev-parse HEAD))
+            echo "Tag found: ${TAG_NAME}"
             RELEASE_DESCRIPTION=$(curl -L \
               -X POST \
               -H "Accept: application/vnd.github+json" \
