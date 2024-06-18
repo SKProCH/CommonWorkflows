@@ -69,21 +69,23 @@ jobs:
               https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/generate-notes \
               -d '{"tag_name":"${TAG_NAME}"}' | jq -r '.body')
             ESCAPED="${TAG_NAME}\n\n${RELEASE_DESCRIPTION}"
-            echo "ReleaseNotes=${ESCAPED@Q}" >> $GITHUB_ENV
+            echo "ReleaseNotes=$ESCAPED" >> $GITHUB_ENV
           else
             echo "HasTag=false" >> $GITHUB_ENV
             echo "No tag found on the current commit."
             RELEASE_DESCRIPTION=$(git log -1 --pretty=%B)
             URL=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/$(git rev-parse HEAD)
             ESCAPED="This version based on commit ${URL}\n\n${RELEASE_DESCRIPTION}"
-            echo "ReleaseNotes=${ESCAPED@Q}" >> $GITHUB_ENV
+            echo "ReleaseNotes=$ESCAPED" >> $GITHUB_ENV
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build project
         if: "${{ inputs.build-command == '' }}"
-        run: dotnet pack /p:Version=${{ env.Version }} /p:PackageReleaseNotes="${{ env.ReleaseNotes }}"
+        run: |
+          NOTES=${{ env.ReleaseNotes }}
+          dotnet pack /p:Version=${{ env.Version }} /p:PackageReleaseNotes="${NOTES@Q}"
 
       - name: Custom build
         if: "${{ inputs.build-command != '' }}"
