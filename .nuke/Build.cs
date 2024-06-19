@@ -19,6 +19,7 @@ using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
 using Nuke.Common.Tools.Git;
 using Nuke.Common.Tools.GitHub;
+using Nuke.Common.Tools.MinVer;
 using Nuke.Common.Utilities;
 using Nuke.Common.Utilities.Collections;
 using Octokit;
@@ -35,11 +36,14 @@ class Build : NukeBuild
     [Nuke.Common.Parameter(Name = "dry-run")] public bool IsDryRun { get; set; }
 
     [Nuke.Common.Parameter(Name = "nuget-feed-url")]
-    public string NuGetFeedUrl { get; set; } = "https://api.nuget.org/v3/index.json";
+    public string NuGetFeedUrl { get; set; }
+        = "https://api.nuget.org/v3/index.json";
 
     [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NuGetApiKey { get; set; }
 
     [Nuke.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
+
+    [Nuke.Common.Parameter(Name = "build-command")] public string? BuildCommand { get; set; }
 
     /// Support plugins are available for:
     ///   - JetBrains ReSharper        https://nuke.build/resharper
@@ -52,6 +56,59 @@ class Build : NukeBuild
         .Executes(() =>
         {
             Log.Information("This is cli tool for assisting in pipelines");
+        });
+
+    Target ResolveVersionAndBuild => _ => _
+        .Executes(async () =>
+        {
+            Log.Information("Resolving is current commit has tag");
+            var tagFound = false;
+            GitTasks.Git("describe --exact-match --tags $(git rev-parse HEAD)",
+                exitHandler: process => tagFound = process.ExitCode == 0);
+
+            string version;
+            string releaseNotes;
+            if (tagFound)
+            {
+                var tag = GitTasks.Git("describe --tags $(git rev-parse HEAD)")
+                    .First().Text;
+                version = tag.TrimStart('v');
+
+                var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
+
+                var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
+                var credentials = new Credentials(GitHubActions.Instance.Token);
+                GitHubTasks.GitHubClient = new GitHubClient(
+                    new ProductHeaderValue(nameof(NukeBuild)),
+                    new InMemoryCredentialStore(credentials));
+
+                var generatedReleaseNotes = await GitHubTasks.GitHubClient.Repository.Release
+                    .GenerateReleaseNotes(owner, name, new GenerateReleaseNotesRequest(tag));
+
+                releaseNotes = generatedReleaseNotes.Body;
+            }
+            else
+            {
+                var (minver, _) = MinVerTasks.MinVer(s => s
+                    .SetTagPrefix("v")
+                    .SetDefaultPreReleasePhase("nightly")
+                    .DisableProcessLogOutput());
+                version = minver.Version;
+                var lastCommitMessage = GitTasks.Git("log -1 --pretty=%B")
+                    .Select(output => output.Text)
+                    .JoinNewLine();
+
+                var commitHash = GitTasks.GitCurrentCommit();
+                var commitUrl = $"{GitHubActions.Instance.ServerUrl}/" +
+                                $"{GitHubActions.Instance.Repository}/" +
+                                $"commit/" +
+                                $"{commitHash}";
+
+                releaseNotes = $"This version based on commit {commitUrl}\n\n{lastCommitMessage}";
+            }
+
+            BuildCommand ??= "dotnet pack";
+            ProcessTasks.StartProcess(BuildCommand, $"/p:Version={version} /p:PackageReleaseNotes=\"{releaseNotes}\"");
         });
 
     Target HideOutdatedNightlyPackages => _ => _
