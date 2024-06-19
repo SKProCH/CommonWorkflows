@@ -73,7 +73,7 @@ jobs:
         if: "${{ env.HasTag == 'true' || inputs.publish-nightly }}"
         run: |
           dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-          dotnet nuget push "**/*.snupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "**/*.snupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
       
       - name: Hide old versions from Nuget
         if: "${{ env.HasTag == 'true' }}"
