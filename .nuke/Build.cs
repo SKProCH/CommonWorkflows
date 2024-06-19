@@ -114,9 +114,10 @@ class Build : NukeBuild
             }
 
             ProcessTasks.StartProcess("dotnet",
-                BuildCommand +
-                $" /p:Version={version.DoubleQuoteIfNeeded()}" +
-                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded()}");
+                    BuildCommand +
+                    $" /p:Version={version.DoubleQuoteIfNeeded()}" +
+                    $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded()}")
+                .WaitForExit();
         });
 
     Target HideOutdatedNightlyPackages => _ => _
