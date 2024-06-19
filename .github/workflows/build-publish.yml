@@ -77,10 +77,10 @@ jobs:
       
       - name: Hide old versions from Nuget
         if: "${{ env.HasTag == 'true' }}"
-        run: .commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key=${{ secrets.NUGET_KEY }}
+        run: .commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key="${{ secrets.NUGET_KEY }}"
 
       - name: Create release
         if: "${{ env.HasTag == 'true' }}"
-        run: .commonWorkflows/build.sh CreateRelease --root . --nuget-api-key=${{ secrets.NUGET_KEY }} --tag=${{ env.Version }}
+        run: .commonWorkflows/build.sh CreateRelease --root . --nuget-api-key="${{ secrets.NUGET_KEY }}" --tag="v${{ env.Version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

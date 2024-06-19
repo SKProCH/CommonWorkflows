@@ -205,6 +205,8 @@ class Build : NukeBuild
     public async Task HideOutdatedPackages(SourceRepository sourceRepository, IReadOnlyCollection<string> oldVersions,
         string packageName)
     {
+        ArgumentNullException.ThrowIfNull(NugetApiKey);
+        
         Log.Information("Retrieving nightly packages version for {PackageName} to hide", packageName);
         var resource = await sourceRepository.GetResourceAsync<PackageMetadataResource>();
         var parametersNugetPackages = await resource.GetMetadataAsync(
