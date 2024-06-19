@@ -65,14 +65,14 @@ class Build : NukeBuild
             var tagFound = false;
             
             var commitHash = GitTasks.GitCurrentCommit();
-            GitTasks.Git("describe --exact-match", $"--tags {commitHash}",
+            GitTasks.Git($"describe --exact-match --tags {commitHash}",
                 exitHandler: process => tagFound = process.ExitCode == 0);
 
             string version;
             string releaseNotes;
             if (tagFound)
             {
-                var tag = GitTasks.Git("describe", $"--tags {commitHash}")
+                var tag = GitTasks.Git($"describe --tags {commitHash}")
                     .First().Text;
                 version = tag.TrimStart('v');
 
