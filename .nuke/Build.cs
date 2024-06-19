@@ -63,7 +63,7 @@ class Build : NukeBuild
         {
             Log.Information("Resolving is current commit has tag");
             var tagFound = false;
-            
+
             var commitHash = GitTasks.GitCurrentCommit();
             GitTasks.Git($"describe --exact-match --tags {commitHash}",
                 exitHandler: process => tagFound = process.ExitCode == 0);
@@ -110,9 +110,13 @@ class Build : NukeBuild
 
             if (BuildCommand.IsNullOrWhiteSpace())
             {
-                BuildCommand = "dotnet pack";
+                BuildCommand = "pack";
             }
-            ProcessTasks.StartProcess(BuildCommand, $" /p:Version={version} /p:PackageReleaseNotes={releaseNotes}");
+
+            ProcessTasks.StartProcess("dotnet",
+                BuildCommand +
+                $" /p:Version={version.DoubleQuoteIfNeeded()}" +
+                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded()}");
         });
 
     Target HideOutdatedNightlyPackages => _ => _
