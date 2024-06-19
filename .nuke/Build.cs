@@ -39,7 +39,6 @@ class Build : NukeBuild
     public string NuGetFeedUrl { get; set; }
         = "https://api.nuget.org/v3/index.json";
 
-    [Secret] [Nuke.Common.Parameter(Name = "github-api-key")] public string? GitHubApiKey { get; set; }
     [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NugetApiKey { get; set; }
 
     [Nuke.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
@@ -80,7 +79,7 @@ class Build : NukeBuild
                 var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
 
                 var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
-                var credentials = new Credentials(GitHubApiKey);
+                var credentials = new Credentials(GitHubActions.Instance.Token);
                 GitHubTasks.GitHubClient = new GitHubClient(
                     new ProductHeaderValue(nameof(NukeBuild)),
                     new InMemoryCredentialStore(credentials));
@@ -148,7 +147,7 @@ class Build : NukeBuild
             var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
 
             var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
-            var credentials = new Credentials(GitHubApiKey);
+            var credentials = new Credentials(GitHubActions.Instance.Token);
             GitHubTasks.GitHubClient = new GitHubClient(
                 new ProductHeaderValue(nameof(NukeBuild)),
                 new InMemoryCredentialStore(credentials));

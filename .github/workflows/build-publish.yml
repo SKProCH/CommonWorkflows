@@ -65,7 +65,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve version and build project
-        run: .commonWorkflows/build.sh ResolveVersionAndBuild --root . --github-api-key=${{ secrets.GITHUB_TOKEN }} --build-command=${{ inputs.build-command }}
+        run: .commonWorkflows/build.sh ResolveVersionAndBuild --root . --build-command="${{ inputs.build-command }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to Nuget
         if: "${{ env.HasTag == 'true' || inputs.publish-nightly }}"
@@ -79,4 +81,6 @@ jobs:
 
       - name: Create release
         if: "${{ env.HasTag == 'true' }}"
-        run: .commonWorkflows/build.sh CreateRelease --root . --github-api-key=${{ secrets.GITHUB_TOKEN }} --nuget-api-key=${{ secrets.NUGET_KEY }} --tag=${{ env.Version }}
+        run: .commonWorkflows/build.sh CreateRelease --root . --nuget-api-key=${{ secrets.NUGET_KEY }} --tag=${{ env.Version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
