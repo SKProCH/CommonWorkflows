@@ -63,14 +63,16 @@ class Build : NukeBuild
         {
             Log.Information("Resolving is current commit has tag");
             var tagFound = false;
-            GitTasks.Git("describe --exact-match --tags $(git rev-parse HEAD)",
+            
+            var commitHash = GitTasks.GitCurrentCommit();
+            GitTasks.Git("describe --exact-match", $"--tags {commitHash}",
                 exitHandler: process => tagFound = process.ExitCode == 0);
 
             string version;
             string releaseNotes;
             if (tagFound)
             {
-                var tag = GitTasks.Git("describe --tags $(git rev-parse HEAD)")
+                var tag = GitTasks.Git("describe", $"--tags {commitHash}")
                     .First().Text;
                 version = tag.TrimStart('v');
 
@@ -98,7 +100,6 @@ class Build : NukeBuild
                     .Select(output => output.Text)
                     .JoinNewLine();
 
-                var commitHash = GitTasks.GitCurrentCommit();
                 var commitUrl = $"{GitHubActions.Instance.ServerUrl}/" +
                                 $"{GitHubActions.Instance.Repository}/" +
                                 $"commit/" +
