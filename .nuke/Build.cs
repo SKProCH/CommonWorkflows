@@ -39,7 +39,8 @@ class Build : NukeBuild
     public string NuGetFeedUrl { get; set; }
         = "https://api.nuget.org/v3/index.json";
 
-    [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NuGetApiKey { get; set; }
+    [Secret] [Nuke.Common.Parameter(Name = "github-api-key")] public string? GitHubApiKey { get; set; }
+    [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NugetApiKey { get; set; }
 
     [Nuke.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
 
@@ -79,7 +80,7 @@ class Build : NukeBuild
                 var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
 
                 var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
-                var credentials = new Credentials(GitHubActions.Instance.Token);
+                var credentials = new Credentials(GitHubApiKey);
                 GitHubTasks.GitHubClient = new GitHubClient(
                     new ProductHeaderValue(nameof(NukeBuild)),
                     new InMemoryCredentialStore(credentials));
@@ -147,7 +148,7 @@ class Build : NukeBuild
             var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
 
             var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
-            var credentials = new Credentials(GitHubActions.Instance.Token);
+            var credentials = new Credentials(GitHubApiKey);
             GitHubTasks.GitHubClient = new GitHubClient(
                 new ProductHeaderValue(nameof(NukeBuild)),
                 new InMemoryCredentialStore(credentials));
@@ -219,7 +220,7 @@ class Build : NukeBuild
 
             var packageUpdateResource = await sourceRepository.GetResourceAsync<PackageUpdateResource>();
             await packageUpdateResource.Delete(packageName, outdatedVersion.Identity.Version.ToString(),
-                _ => NuGetApiKey, _ => true, false, NugetLogger.Instance);
+                _ => NugetApiKey, _ => true, false, NugetLogger.Instance);
         }
 
         Log.Information("All previous nightly version for {PackageName} was hidden", packageName);
