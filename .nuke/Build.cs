@@ -108,8 +108,11 @@ class Build : NukeBuild
                 releaseNotes = $"This version based on commit {commitUrl}\n\n{lastCommitMessage}";
             }
 
-            BuildCommand ??= "dotnet pack";
-            ProcessTasks.StartProcess(BuildCommand, $"/p:Version={version} /p:PackageReleaseNotes=\"{releaseNotes}\"");
+            if (BuildCommand.IsNullOrWhiteSpace())
+            {
+                BuildCommand = "dotnet pack";
+            }
+            ProcessTasks.StartProcess(BuildCommand, $" /p:Version={version} /p:PackageReleaseNotes={releaseNotes}");
         });
 
     Target HideOutdatedNightlyPackages => _ => _
