@@ -16,4 +16,6 @@ public static class Extensions
         var lastLabels = version.ReleaseLabels.TakeLast(2).ToImmutableArray();
         return lastLabels.Length == 2 && lastLabels.All(s => int.TryParse(s, out _));
     }
+
+    public static string ReplaceCommas(this string s) => s.Replace(",", "%2c");
 }

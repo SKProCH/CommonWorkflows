@@ -17,6 +17,7 @@ using Nuke.Common.Git;
 using Nuke.Common.IO;
 using Nuke.Common.ProjectModel;
 using Nuke.Common.Tooling;
+using Nuke.Common.Tools.DotNet;
 using Nuke.Common.Tools.Git;
 using Nuke.Common.Tools.GitHub;
 using Nuke.Common.Tools.MinVer;
@@ -113,18 +114,19 @@ class Build : NukeBuild
                 BuildCommand = "pack";
             }
 
-            ProcessTasks.StartProcess("dotnet",
-                    BuildCommand +
-                    $" /p:Version={version.DoubleQuoteIfNeeded()}" +
-                    $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded()}")
-                .WaitForExit();
+            var buildProcess = ProcessTasks.StartProcess("dotnet",
+                BuildCommand +
+                $" /p:Version={version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
+                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}", 
+                logger: DotNetTasks.DotNetLogger);
+            buildProcess.AssertZeroExitCode();
         });
 
     Target HideOutdatedNightlyPackages => _ => _
         .Executes(async () =>
         {
             ArgumentNullException.ThrowIfNull(NugetApiKey);
-            
+
             Log.Information("Fetching all tags reachable from current commit");
             var readOnlyCollection = GitTasks.Git("tag --merged HEAD");
             var oldVersions = readOnlyCollection
@@ -208,7 +210,7 @@ class Build : NukeBuild
         string packageName)
     {
         ArgumentNullException.ThrowIfNull(NugetApiKey);
-        
+
         Log.Information("Retrieving nightly packages version for {PackageName} to hide", packageName);
         var resource = await sourceRepository.GetResourceAsync<PackageMetadataResource>();
         var parametersNugetPackages = await resource.GetMetadataAsync(
