@@ -118,7 +118,7 @@ class Build : NukeBuild
                 BuildCommand +
                 $" /p:Version={version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
                 $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}", 
-                logger: DotNetTasks.DotNetLogger);
+                logger: DotNetTasks.DotNetLogger, logOutput: false);
             buildProcess.AssertZeroExitCode();
         });
 
