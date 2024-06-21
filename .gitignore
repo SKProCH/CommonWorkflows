@@ -2,3 +2,7 @@
 
 bin/
 obj/
+
+temp/
+
+build.schema.json

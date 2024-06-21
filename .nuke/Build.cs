@@ -123,6 +123,8 @@ class Build : NukeBuild
     Target HideOutdatedNightlyPackages => _ => _
         .Executes(async () =>
         {
+            ArgumentNullException.ThrowIfNull(NugetApiKey);
+            
             Log.Information("Fetching all tags reachable from current commit");
             var readOnlyCollection = GitTasks.Git("tag --merged HEAD");
             var oldVersions = readOnlyCollection
