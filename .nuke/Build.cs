@@ -63,16 +63,19 @@ class Build : NukeBuild
         .Executes(async () =>
         {
             Log.Information("Resolving is current commit has tag");
-            var tagFound = false;
 
             var commitHash = GitTasks.GitCurrentCommit();
-            GitTasks.Git($"describe --exact-match --tags {commitHash}",
-                exitHandler: process => tagFound = process.ExitCode == 0);
+            using var gitFindIsCurrentCommitHasTag = ProcessTasks.StartProcess(GitTasks.GitPath,
+                $"describe --exact-match --tags {commitHash}",
+                logger: GitTasks.GitLogger);
+            gitFindIsCurrentCommitHasTag.AssertWaitForExit();
+            var tagFound = gitFindIsCurrentCommitHasTag.ExitCode == 0;
 
             string version;
             string releaseNotes;
             if (tagFound)
             {
+                Log.Information("Current commit has tag. Resolving version via git tag");
                 var tag = GitTasks.Git($"describe --tags {commitHash}")
                     .First().Text;
                 version = tag.TrimStart('v');
@@ -92,6 +95,7 @@ class Build : NukeBuild
             }
             else
             {
+                Log.Information("Current commit doesn't have a tag. Resolving version via minver");
                 var (minver, _) = MinVerTasks.MinVer(s => s
                     .SetTagPrefix("v")
                     .SetDefaultPreReleasePhase("nightly")
@@ -114,10 +118,11 @@ class Build : NukeBuild
                 BuildCommand = "pack";
             }
 
+            Log.Information("Start building project");
             var buildProcess = ProcessTasks.StartProcess("dotnet",
                 BuildCommand +
                 $" /p:Version={version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
-                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}", 
+                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}",
                 logger: DotNetTasks.DotNetLogger);
             buildProcess.AssertZeroExitCode();
         });
