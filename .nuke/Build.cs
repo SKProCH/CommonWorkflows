@@ -113,18 +113,10 @@ class Build : NukeBuild
                 releaseNotes = $"This version based on commit {commitUrl}\n\n{lastCommitMessage}";
             }
 
-            if (BuildCommand.IsNullOrWhiteSpace())
-            {
-                BuildCommand = "pack";
-            }
 
             Log.Information("Start building project");
-            var buildProcess = ProcessTasks.StartProcess("dotnet",
-                BuildCommand +
-                $" /p:Version={version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
-                $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}",
-                logger: DotNetTasks.DotNetLogger);
-            buildProcess.AssertZeroExitCode();
+            var buildCommand = ExecuteBuildCommand(BuildCommand, version, releaseNotes);
+            buildCommand.AssertZeroExitCode();
         });
 
     Target HideOutdatedNightlyPackages => _ => _
@@ -202,6 +194,59 @@ class Build : NukeBuild
                 await GitHubTasks.GitHubClient.Repository.Release.Create(owner, name, newRelease);
             }
         });
+
+    private static IProcess ExecuteBuildCommand(string? buildCommand, string version, string releaseNotes)
+    {
+        if (buildCommand is null || buildCommand.IsEmpty())
+        {
+            buildCommand = "dotnet pack";
+        }
+
+        buildCommand = buildCommand.Trim();
+
+        var hasSubstitutions = buildCommand.Contains("{VERSION}")
+                               || buildCommand.Contains("{RELEASENOTES}");
+
+        if (hasSubstitutions)
+        {
+            Log.Information("Replacing VERSION and RELEASENOTES in build command: {Command}", buildCommand);
+            buildCommand = buildCommand
+                .Replace("{VERSION}", version.ReplaceCommas())
+                .Replace("{RELEASENOTES}", releaseNotes.ReplaceCommas());
+        }
+        else
+        {
+            if (buildCommand.StartsWith("dotnet"))
+            {
+                Log.Information("Appending dotnet properties for version and release notes");
+                buildCommand +=
+                    $" /p:Version={version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
+                    $" /p:PackageReleaseNotes={releaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}";
+            }
+            else
+            {
+                Log.Warning(
+                    "Build command doesn't start with dotnet, but also doesn't contains any variables to replace");
+            }
+        }
+
+        var firstSpaceIndex = buildCommand.IndexOf(' ');
+
+        string executable;
+        if (firstSpaceIndex == -1)
+        {
+            executable = buildCommand;
+            buildCommand = null;
+        }
+        else
+        {
+            executable = buildCommand[..firstSpaceIndex];
+            buildCommand = buildCommand[firstSpaceIndex..].Trim();
+        }
+        
+        Log.Information("Executing {Command} with {Parameters}", executable, buildCommand);
+        return ProcessTasks.StartProcess(executable, buildCommand, logger: DotNetTasks.DotNetLogger);
+    }
 
     private static string? GetPackageNameFromNupkg(AbsolutePath path)
     {
