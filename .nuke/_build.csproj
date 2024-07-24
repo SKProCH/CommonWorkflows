@@ -17,4 +17,8 @@
     <PackageReference Include="Nuke.GitHub" Version="5.0.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageDownload Include="minver-cli" Version="[5.0.0]" />
+  </ItemGroup>
+
 </Project>
