@@ -68,7 +68,7 @@ class Build : NukeBuild
             using var gitFindIsCurrentCommitHasTag = ProcessTasks.StartProcess(GitTasks.GitPath,
                 $"describe --exact-match --tags {commitHash}",
                 workingDirectory: WorkingDirectory, 
-                logger: GitTasks.GitLogger);
+                logger: (_, _) => {});
             gitFindIsCurrentCommitHasTag.AssertWaitForExit();
             var tagFound = gitFindIsCurrentCommitHasTag.ExitCode == 0;
 
