@@ -43,8 +43,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: SKProCH/CommonWorkflows
-          path: ../.commonWorkflows
+          path: .commonWorkflows
           fetch-depth: 0
+      - name: Move nuke project to root to avoid MSBuild inheritance
+        run: mv .commonWorkflows ../.commonWorkflows
       - name: 'Cache: .nuke/temp, ~/.nuget/packages'
         uses: actions/cache@v3
         with:
