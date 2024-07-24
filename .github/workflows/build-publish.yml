@@ -7,6 +7,11 @@ on:
         description: 'Should nightly versions be published to feeds'
         required: true
         type: boolean
+      only-build:
+        description: 'If this should only build package, and disable any publishing'
+        required: false
+        type: boolean
+        default: false
       dotnet-version:
         description: 'Optional SDK version(s) to use. If not provided, will install global.json version when available. Examples: 2.2.104, 3.1, 3.1.x, 3.x, 6.0.2xx'
         required: true
@@ -70,17 +75,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to Nuget
-        if: "${{ env.HasTag == 'true' || inputs.publish-nightly }}"
+        if: "${{ !inputs.only-build && (env.HasTag == 'true' || inputs.publish-nightly) }}"
         run: |
           dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
           dotnet nuget push "**/*.snupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
       
       - name: Hide old versions from Nuget
-        if: "${{ env.HasTag == 'true' }}"
+        if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
         run: .commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ secrets.NUGET_KEY }}"
 
       - name: Create release
-        if: "${{ env.HasTag == 'true' }}"
+        if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
         run: .commonWorkflows/build.sh CreateRelease --root . --nuget-api-key "${{ secrets.NUGET_KEY }}" --tag "v${{ env.Version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
