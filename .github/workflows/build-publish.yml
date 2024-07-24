@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: SKProCH/CommonWorkflows
-          path: .commonWorkflows
+          path: /commonWorkflows
           fetch-depth: 0
       - name: 'Cache: .nuke/temp, ~/.nuget/packages'
         uses: actions/cache@v3
@@ -70,7 +70,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve version and build project
-        run: .commonWorkflows/build.sh ResolveVersionAndBuild --root . --build-command "${{ inputs.build-command }}"
+        run: /commonWorkflows/build.sh ResolveVersionAndBuild --root . --build-command "${{ inputs.build-command }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -82,10 +82,10 @@ jobs:
       
       - name: Hide old versions from Nuget
         if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
-        run: .commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ secrets.NUGET_KEY }}"
+        run: /commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ secrets.NUGET_KEY }}"
 
       - name: Create release
         if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
-        run: .commonWorkflows/build.sh CreateRelease --root . --nuget-api-key "${{ secrets.NUGET_KEY }}" --tag "v${{ env.Version }}"
+        run: /commonWorkflows/build.sh CreateRelease --root . --nuget-api-key "${{ secrets.NUGET_KEY }}" --tag "v${{ env.Version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
