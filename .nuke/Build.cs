@@ -67,6 +67,7 @@ class Build : NukeBuild
             var commitHash = GitTasks.GitCurrentCommit();
             using var gitFindIsCurrentCommitHasTag = ProcessTasks.StartProcess(GitTasks.GitPath,
                 $"describe --exact-match --tags {commitHash}",
+                workingDirectory: WorkingDirectory, 
                 logger: GitTasks.GitLogger);
             gitFindIsCurrentCommitHasTag.AssertWaitForExit();
             var tagFound = gitFindIsCurrentCommitHasTag.ExitCode == 0;
@@ -245,7 +246,7 @@ class Build : NukeBuild
         }
         
         Log.Information("Executing {Command} with {Parameters}", executable, buildCommand);
-        return ProcessTasks.StartProcess(executable, buildCommand, logger: DotNetTasks.DotNetLogger);
+        return ProcessTasks.StartProcess(executable, buildCommand, workingDirectory: WorkingDirectory, logger: DotNetTasks.DotNetLogger);
     }
 
     private static string? GetPackageNameFromNupkg(AbsolutePath path)
