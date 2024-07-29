@@ -67,7 +67,7 @@ class Build : NukeBuild
             var commitHash = GitTasks.GitCurrentCommit();
             using var gitFindIsCurrentCommitHasTag = ProcessTasks.StartProcess(GitTasks.GitPath,
                 $"describe --exact-match --tags {commitHash}",
-                workingDirectory: WorkingDirectory, 
+                workingDirectory: RootDirectory, 
                 logger: (_, _) => {});
             gitFindIsCurrentCommitHasTag.AssertWaitForExit();
             var tagFound = gitFindIsCurrentCommitHasTag.ExitCode == 0;
@@ -126,9 +126,9 @@ class Build : NukeBuild
             ArgumentNullException.ThrowIfNull(NugetApiKey);
 
             Log.Information("Fetching all tags reachable from current commit");
-            var readOnlyCollection = GitTasks.Git("tag --merged HEAD");
+            var readOnlyCollection = GitTasks.Git("tag --merged HEAD", workingDirectory: RootDirectory);
             var oldVersions = readOnlyCollection
-                .Select(output => output.Text)
+                .Select(output => output.Text.TrimStart('v'))
                 .Skip(1)
                 .ToImmutableArray();
             Log.Information("Fetched {Count} old tags", oldVersions.Length);
@@ -139,6 +139,7 @@ class Build : NukeBuild
 
             var packageNames = nupkgs.Select(GetPackageNameFromNupkg)
                 .Where(s => s is not null)
+                .Distinct()
                 .ToImmutableArray();
             Log.Information("Found {Count} packages: \n{Files}", packageNames.Length, string.Join("\n", packageNames));
 
@@ -246,7 +247,7 @@ class Build : NukeBuild
         }
         
         Log.Information("Executing {Command} with {Parameters}", executable, buildCommand);
-        return ProcessTasks.StartProcess(executable, buildCommand, workingDirectory: WorkingDirectory, logger: DotNetTasks.DotNetLogger);
+        return ProcessTasks.StartProcess(executable, buildCommand, workingDirectory: RootDirectory, logger: DotNetTasks.DotNetLogger);
     }
 
     private static string? GetPackageNameFromNupkg(AbsolutePath path)
@@ -273,6 +274,7 @@ class Build : NukeBuild
             CancellationToken.None);
 
         var outdatedVersions = parametersNugetPackages
+            .Where(metadata => metadata.IsListed)
             .Where(metadata => metadata.Identity.HasVersion)
             .Where(metadata => oldVersions.Any(oldVersion => metadata.Identity.Version.ToString().Contains(oldVersion)))
             .Where(metadata => metadata.Identity.Version.IsNightly());
