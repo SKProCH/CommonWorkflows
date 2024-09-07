@@ -68,7 +68,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve version and build project
-        run: ../.commonWorkflows/build.sh ResolveVersionAndBuild --root . --build-command "${{ inputs.build-command }}"
+        run: ../.commonWorkflows/build.sh Pack --root . --build-command "${{ inputs.build-command }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

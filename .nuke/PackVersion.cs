@@ -1,0 +1,1 @@
+﻿public record PackVersion(string Version, string ReleaseNotes);

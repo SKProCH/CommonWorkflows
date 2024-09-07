@@ -21,4 +21,8 @@
     <PackageDownload Include="minver-cli" Version="[5.0.0]" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Numerge\Numerge.csproj" />
+  </ItemGroup>
+
 </Project>
