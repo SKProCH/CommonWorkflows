@@ -1,5 +1,3 @@
-using System;
-
 namespace Numerge
 {
     public interface INumergeLogger

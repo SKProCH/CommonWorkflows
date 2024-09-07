@@ -1,9 +1,5 @@
 using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Xml.Linq;
 using static Numerge.Constants;
 // ReSharper disable PossibleNullReferenceException
@@ -218,27 +214,27 @@ namespace Numerge
             
             _data = data;
             var doc = XDocument.Load(new MemoryStream(data));
-            _xmlns = doc.Root.Name.Namespace.ToString();
+            _xmlns = doc.Root!.Name.Namespace.ToString();
             
             var deps = doc.Root.Descendants(NugetName("dependencies")).First();
             foreach (var group in deps.Elements(NugetName("group")))
             {
-                var tfm = group.Attribute("targetFramework").Value;
+                var tfm = group.Attribute("targetFramework")!.Value;
                 var groupList = Dependencies[tfm] = new DependencyGroup();
                 foreach (var dep in group.Elements())
                     groupList.Add(new ExternalDependency(dep));
             }
 
             var metadata = doc.Root.Element(NugetName("metadata"));
-            Id = metadata.Element(NugetName("id")).Value;
-            Version = metadata.Element(NugetName("version")).Value;
+            Id = metadata!.Element(NugetName("id"))!.Value;
+            Version = metadata.Element(NugetName("version"))!.Value;
         }
 
         public byte[] Serialize()
         {
             RemoveSelfDependency();
             var doc = XDocument.Load(new MemoryStream(_data));
-            var deps = doc.Root.Descendants(NugetName("dependencies")).First();
+            var deps = doc.Root!.Descendants(NugetName("dependencies")).First();
             deps.RemoveAll();
             foreach (var group in Dependencies)
             {
@@ -296,14 +292,12 @@ namespace Numerge
             return ((IEnumerable)_list).GetEnumerator();
         }
 
-        static string MergeExcludes(string first, string second)
+        static string? MergeExcludes(string? first, string? second)
         {
             var sl = (first ?? "").Split(',');
             var s2 = (second ?? "").Split(',');
             var a = sl.Where(e => s2.Contains(e)).ToArray();
-            if (a.Length == 0)
-                return null;
-            return string.Join(",", a);
+            return a.Length == 0 ? null : string.Join(",", a);
         }
         
         public void Add(IDependency dependency)
@@ -349,26 +343,18 @@ namespace Numerge
     interface IDependency
     {
         string Id { get; }
-        string ExcludeAssets { get; set; }
+        string? ExcludeAssets { get; set; }
         XElement Serialize(string xmlna);
     }
 
-    class ExternalDependency : IDependency
+    class ExternalDependency(XElement el) : IDependency
     {
-        private readonly XElement _el;
+        public string Id { get; } = el.Attribute("id")!.Value;
+        public string? ExcludeAssets { get; set; } = el.Attribute("exclude")?.Value;
 
-        public ExternalDependency(XElement el)
-        {
-            _el = el;
-            Id = el.Attribute("id").Value;
-            ExcludeAssets = el.Attribute("exclude")?.Value;
-        }
-
-        public string Id { get; }
-        public string ExcludeAssets { get; set; }
         public XElement Serialize(string xmlns)
         {
-            var rv = XElement.Load(_el.CreateReader());
+            var rv = XElement.Load(el.CreateReader());
             if (!string.IsNullOrWhiteSpace(ExcludeAssets))
                 rv.SetAttributeValue("exclude", ExcludeAssets);
             else
@@ -388,18 +374,12 @@ namespace Numerge
         }
     }
 
-    class BinaryDependency : IDependency
+    class BinaryDependency(IDependency original, LoadedPackage package) : IDependency
     {
-        public LoadedPackage Package { get; }
+        public LoadedPackage Package { get; } = package;
         public string Id => Package.Spec.Id;
-        public string ExcludeAssets { get; set; }
+        public string? ExcludeAssets { get; set; } = original.ExcludeAssets;
 
-        public BinaryDependency(IDependency original, LoadedPackage package)
-        {
-            Package = package;
-            ExcludeAssets = original.ExcludeAssets;
-        }
-        
         public XElement Serialize(string xmlns)
         {
             var rv = new XElement(XName.Get("dependency", xmlns));
@@ -416,9 +396,9 @@ namespace Numerge
         public ContentTypes(byte[] data)
         {
             var doc = XDocument.Load(new MemoryStream(data));
-            foreach (var el in doc.Root.Elements())
-                this[el.Attribute("Extension").Value] =
-                    el.Attribute("ContentType").Value;
+            foreach (var el in doc.Root!.Elements())
+                this[el.Attribute("Extension")!.Value] =
+                    el.Attribute("ContentType")!.Value;
         }
 
         public byte[] Serialize()

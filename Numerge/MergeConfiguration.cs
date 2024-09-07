@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.Serialization;
+﻿using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 
 namespace Numerge
@@ -10,7 +7,7 @@ namespace Numerge
     public class MergeConfiguration
     {
         [DataMember]
-        public List<PackageContfiguration> Packages { get; set; }
+        public required List<PackageContfiguration> Packages { get; set; }
         
         public static MergeConfiguration Load(Stream s)
         {
@@ -18,13 +15,13 @@ namespace Numerge
             {
                 UseSimpleDictionaryFormat = true 
             });
-            return (MergeConfiguration) serializer.ReadObject(s);
+            return (MergeConfiguration) serializer.ReadObject(s)!;
         }
 
         public static MergeConfiguration LoadFile(string path)
         {
-            using (var s = File.OpenRead(path))
-                return Load(s);
+            using var s = File.OpenRead(path);
+            return Load(s);
         }
     }
 
@@ -32,10 +29,10 @@ namespace Numerge
     public class PackageContfiguration
     {
         [DataMember]
-        public string Id { get; set; }
+        public required string Id { get; set; }
         
         [DataMember]
-        public string IncomingIncludeAssetsOverride { get; set; }
+        public required string IncomingIncludeAssetsOverride { get; set; }
         
         [DataMember]
         public bool MergeAll { get; set; }
@@ -52,7 +49,7 @@ namespace Numerge
     public class PackageMergeConfiguration
     {
         [DataMember]
-        public string Id { get; set; }
+        public required string Id { get; set; }
         
         [DataMember]
         public bool IgnoreMissingFrameworkBinaries { get; set; }
