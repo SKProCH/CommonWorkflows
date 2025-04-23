@@ -8,6 +8,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using JetBrains.Annotations;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -30,6 +31,7 @@ using Utils;
 using Repository = NuGet.Protocol.Core.Types.Repository;
 // ReSharper disable AllUnderscoreLocalParameterName
 
+[PublicAPI]
 class Build : NukeBuild
 {
     [Nuke.Common.Parameter(Name = "dry-run")] public bool IsDryRun { get; set; }
