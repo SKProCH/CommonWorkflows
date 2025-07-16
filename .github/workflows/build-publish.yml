@@ -40,7 +40,9 @@ jobs:
           fetch-depth: 0
           filter: tree:0
       - name: Checkout workflows repo
-        run: git clone https://github.com/SKProCH/CommonWorkflows ../.commonWorkflows
+        run:  |
+          git clone https://github.com/SKProCH/CommonWorkflows ../.commonWorkflows
+          git submodule update --init --recursive
       - name: 'Cache: .nuke/temp, ~/.nuget/packages'
         uses: actions/cache@v3
         with:
