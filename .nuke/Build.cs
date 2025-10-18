@@ -1,4 +1,3 @@
-#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -230,11 +229,11 @@ class Build : NukeBuild
 
             Log.Information("Fetching all tags reachable from current commit");
             var readOnlyCollection = GitTasks.Git("tag --merged HEAD", workingDirectory: RootDirectory);
-            var oldVersions = readOnlyCollection
+            var oldVersionsStrings = readOnlyCollection
                 .Select(output => output.Text.TrimStart('v'))
-                .Skip(1)
-                .ToImmutableArray();
-            Log.Information("Fetched {Count} old tags", oldVersions.Length);
+                .Skip(1);
+            var versionsCollection = new VersionsCollection(oldVersionsStrings);
+            Log.Information("Fetched {Count} old tags", versionsCollection.Count);
 
             Log.Information("Searching all nuget package files");
             var nupkgs = RootDirectory.GlobFiles("**/*.nupkg");
@@ -249,7 +248,7 @@ class Build : NukeBuild
             var nuget = Repository.Factory.GetCoreV3(NuGetFeedUrl);
             foreach (var packageName in packageNames)
             {
-                await HideOutdatedPackages(nuget, oldVersions, packageName!);
+                await HideOutdatedPackages(nuget, versionsCollection, packageName!);
             }
         });
 
@@ -308,7 +307,7 @@ class Build : NukeBuild
             ?.Name.TrimEnd(".nuspec");
     }
 
-    private async Task HideOutdatedPackages(SourceRepository sourceRepository, IReadOnlyCollection<string> oldVersions,
+    private async Task HideOutdatedPackages(SourceRepository sourceRepository, VersionsCollection oldVersions,
         string packageName)
     {
         ArgumentNullException.ThrowIfNull(NugetApiKey);
@@ -326,8 +325,8 @@ class Build : NukeBuild
         var outdatedVersions = parametersNugetPackages
             .Where(metadata => metadata.IsListed)
             .Where(metadata => metadata.Identity.HasVersion)
-            .Where(metadata => oldVersions.Any(oldVersion => metadata.Identity.Version.ToString().Contains(oldVersion)))
-            .Where(metadata => metadata.Identity.Version.IsNightly());
+            .Where(metadata => metadata.Identity.Version.IsNightly())
+            .Where(metadata => oldVersions.IsNightlyVersionSuperseded(metadata.Identity.Version));
         foreach (var outdatedVersion in outdatedVersions)
         {
             Log.Information("Hiding previous nightly version {Version}", outdatedVersion.Identity.Version.ToString());

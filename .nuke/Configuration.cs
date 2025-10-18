@@ -1,4 +1,3 @@
-#nullable enable
 using System.ComponentModel;
 using Nuke.Common.Tooling;
 
