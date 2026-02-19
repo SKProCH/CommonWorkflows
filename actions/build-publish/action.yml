@@ -61,7 +61,7 @@ runs:
     - name: Resolve version and build project
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        $ACTION_PATH/../../build.sh Pack --root . --build-command "${{ inputs.build-command }}"
+        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj Pack --root . --build-command "${{ inputs.build-command }}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -77,14 +77,14 @@ runs:
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        $ACTION_PATH/../../build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ inputs.nuget-key }}"
+        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{ inputs.nuget-key }}"
       shell: bash
 
     - name: Create release
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        $ACTION_PATH/../../build.sh CreateRelease --root . --nuget-api-key "${{ inputs.nuget-key }}" --tag "v${{ env.Version }}"
+        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj CreateRelease --root . --nuget-api-key "${{ inputs.nuget-key }}" --tag "v${{ env.Version }}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
