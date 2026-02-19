@@ -59,7 +59,9 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
 
     - name: Resolve version and build project
-      run: ${{ github.action_path }}/../../build.sh Pack --root . --build-command "${{ inputs.build-command }}"
+      run: |
+        ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
+        $ACTION_PATH/../../build.sh Pack --root . --build-command "${{ inputs.build-command }}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -73,12 +75,16 @@ runs:
 
     - name: Hide old versions from Nuget
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
-      run: ${{ github.action_path }}/../../build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ inputs.nuget-key }}"
+      run: |
+        ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
+        $ACTION_PATH/../../build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ inputs.nuget-key }}"
       shell: bash
 
     - name: Create release
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
-      run: ${{ github.action_path }}/../../build.sh CreateRelease --root . --nuget-api-key "${{ inputs.nuget-key }}" --tag "v${{ env.Version }}"
+      run: |
+        ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
+        $ACTION_PATH/../../build.sh CreateRelease --root . --nuget-api-key "${{ inputs.nuget-key }}" --tag "v${{ env.Version }}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
