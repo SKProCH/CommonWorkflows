@@ -24,7 +24,8 @@ runs:
   steps:
     - name: 'Fetch git tree history to calculate tags'
       run: |
-        git fetch --prune --no-recurse-submodules --filter=tree:0 origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+        git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+        git fetch --unshallow --tags --prune --filter=tree:0 origin
       shell: bash
       
     - name: 'Cache: .nuke/temp, ~/.nuget/packages'
