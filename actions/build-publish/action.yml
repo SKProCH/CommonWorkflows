@@ -22,6 +22,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: 'Fetch git tree history to calculate tags'
+      run: |
+        git config remote.origin.promisor true
+        git config remote.origin.partialclonefilter tree:0
+        git fetch
+      shell: bash
+      
     - name: 'Cache: .nuke/temp, ~/.nuget/packages'
       uses: actions/cache@v3
       with:
