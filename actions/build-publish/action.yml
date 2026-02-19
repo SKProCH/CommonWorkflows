@@ -1,0 +1,77 @@
+name: 'Build and Publish'
+description: 'Builds and publishes NuGet packages using NUKE'
+inputs:
+  publish-nightly:
+    description: 'Should nightly versions be published to feeds'
+    required: true
+  only-build:
+    description: 'If this should only build package, and disable any publishing'
+    required: false
+    default: 'false'
+  build-command:
+    description: 'Overrides a build command'
+    required: false
+  nuget-key:
+    description: 'NuGet API Key'
+    required: true
+  github-token:
+    description: 'GitHub Token'
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: 'Cache: .nuke/temp, ~/.nuget/packages'
+      uses: actions/cache@v3
+      with:
+        path: |
+          .nuke/temp
+          ~/.nuget/packages
+        key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj', '**/Directory.Packages.props') }}
+
+    - name: 'Restore workloads'
+      run: dotnet workload restore
+      shell: bash
+
+    - name: 'Install minver'
+      run: dotnet tool install --global minver-cli
+      shell: bash
+
+    - name: 'Resolve version'
+      run: |
+        VERSION=$(minver -t v -p nightly -v error)
+        echo "Version=${VERSION}" >> $GITHUB_ENV
+        if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
+          echo "HasTag=true" >> $GITHUB_ENV
+        else
+          echo "HasTag=false" >> $GITHUB_ENV
+        fi
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+
+    - name: Resolve version and build project
+      run: ${{ github.action_path }}/../../build.sh Pack --root . --build-command "${{ inputs.build-command }}"
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+
+    - name: Publish to Nuget
+      if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
+      run: |
+        dotnet nuget push "**/*.nupkg" --api-key ${{ inputs.nuget-key }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        dotnet nuget push "**/*.snupkg" --api-key ${{ inputs.nuget-key }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+      shell: bash
+
+    - name: Hide old versions from Nuget
+      if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
+      run: ${{ github.action_path }}/../../build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ inputs.nuget-key }}"
+      shell: bash
+
+    - name: Create release
+      if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
+      run: ${{ github.action_path }}/../../build.sh CreateRelease --root . --nuget-api-key "${{ inputs.nuget-key }}" --tag "v${{ env.Version }}"
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
