@@ -67,22 +67,22 @@ runs:
         
     - name: NuGet login (OIDC → temp API key)
       uses: NuGet/login@v1
-      id: login
+      id: nuget-login
       with:
         user: ${{ inputs.nuget-user }}
 
     - name: Publish to Nuget
       if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
       run: |
-        dotnet nuget push "**/*.nupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
-        dotnet nuget push "**/*.snupkg" --api-key ${{steps.login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+        dotnet nuget push "**/*.nupkg" --api-key ${{steps.nuget-login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        dotnet nuget push "**/*.snupkg" --api-key ${{steps.nuget-login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
       shell: bash
 
     - name: Hide old versions from Nuget
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{steps.login.outputs.NUGET_API_KEY}}"
+        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}"
       shell: bash
 
     - name: Create release
