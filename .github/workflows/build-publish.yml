@@ -25,67 +25,29 @@ on:
         required: false
         type: string
     secrets:
-      NUGET_KEY:
+      NUGET_USER:
         required: true
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet-version }}
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           filter: tree:0
-      - name: Checkout workflows repo
-        run:  |
-          git clone https://github.com/SKProCH/CommonWorkflows ../.commonWorkflows
-          git submodule update --init --recursive
-      - name: 'Cache: .nuke/temp, ~/.nuget/packages'
-        uses: actions/cache@v3
+      - uses: actions/setup-dotnet@v5
         with:
-          path: |
-            .nuke/temp
-            ~/.nuget/packages
-          key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj', '**/Directory.Packages.props') }}
-      - name: 'Restore workloads'
-        run: dotnet workload restore
-      - name: 'Install additional workload'
-        if: "${{ inputs.workloads != '' }}"
-        run: dotnet workload install ${{ inputs.workloads }}
-      - name: 'Install minver'
-        run: dotnet tool install --global minver-cli
-      - name: 'Resolve version'
-        run: |
-          VERSION=$(minver -t v -p nightly -v error)
-          echo "Version=${VERSION}" >> $GITHUB_ENV
-          if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
-            echo "HasTag=true" >> $GITHUB_ENV
-          else
-            echo "HasTag=false" >> $GITHUB_ENV
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve version and build project
-        run: ../.commonWorkflows/build.sh Pack --root . --build-command "${{ inputs.build-command }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to Nuget
-        if: "${{ !inputs.only-build && (env.HasTag == 'true' || inputs.publish-nightly) }}"
-        run: |
-          dotnet nuget push "**/*.nupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
-          dotnet nuget push "**/*.snupkg" --api-key ${{ secrets.NUGET_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
-      
-      - name: Hide old versions from Nuget
-        if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
-        run: ../.commonWorkflows/build.sh HideOutdatedNightlyPackages --root . --nuget-api-key "${{ secrets.NUGET_KEY }}"
-
-      - name: Create release
-        if: "${{ !inputs.only-build && env.HasTag == 'true' }}"
-        run: ../.commonWorkflows/build.sh CreateRelease --root . --nuget-api-key "${{ secrets.NUGET_KEY }}" --tag "v${{ env.Version }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          dotnet-version: ${{ inputs.dotnet-version }}
+      - name: Build and Publish
+        uses: SKProCH/CommonWorkflows/actions/build-publish@main
+        with:
+          publish-nightly: ${{ inputs.publish-nightly }}
+          only-build: ${{ inputs.only-build }}
+          build-command: ${{ inputs.build-command }}
+          nuget-user: ${{ secrets.NUGET_USER }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
