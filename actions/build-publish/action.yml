@@ -66,6 +66,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         
     - name: NuGet login (OIDC → temp API key)
+      if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
       uses: NuGet/login@v1
       id: nuget-login
       with:
