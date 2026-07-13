@@ -17,5 +17,9 @@ public static class Extensions
         return lastLabels.Length == 2 && lastLabels.All(s => int.TryParse(s, out _));
     }
 
-    public static string ReplaceCommas(this string s) => s.Replace(",", "%2c");
+    public static string ReplaceMsBuildCharacters(this string s) =>
+        s.Replace("%", "%25").Replace("\r", "%0D").Replace("\n", "%0A")
+            .Replace("$", "%24").Replace("@", "%40").Replace("'", "%27")
+            .Replace("(", "%28").Replace(")", "%29").Replace(";", "%3b")
+            .Replace(",", "%2c").Replace("\"", "%22");
 }

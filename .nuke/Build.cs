@@ -141,8 +141,8 @@ class Build : NukeBuild
             {
                 Log.Information("Replacing VERSION and RELEASENOTES in build command: {Command}", buildCommand);
                 buildCommand = buildCommand
-                    .Replace("{VERSION}", PackVersion.Version.ReplaceCommas())
-                    .Replace("{RELEASENOTES}", PackVersion.ReleaseNotes.ReplaceCommas());
+                    .Replace("{VERSION}", PackVersion.Version.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded())
+                    .Replace("{RELEASENOTES}", PackVersion.ReleaseNotes.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded());
             }
             else
             {
@@ -150,8 +150,8 @@ class Build : NukeBuild
                 {
                     Log.Information("Appending dotnet properties for version and release notes");
                     buildCommand +=
-                        $" /p:Version={PackVersion.Version.DoubleQuoteIfNeeded().ReplaceCommas()}" +
-                        $" /p:PackageReleaseNotes={PackVersion.ReleaseNotes.DoubleQuoteIfNeeded().ReplaceCommas()}";
+                        $" /p:Version={PackVersion.Version.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded()}" +
+                        $" /p:PackageReleaseNotes={PackVersion.ReleaseNotes.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded()}";
                 }
                 else
                 {
