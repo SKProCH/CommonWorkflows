@@ -36,11 +36,11 @@ runs:
         fi
       shell: bash
       
-    - name: 'Cache: .nuke/temp, ~/.nuget/packages'
+    - name: 'Cache: .fallout/temp, ~/.nuget/packages'
       uses: actions/cache@v3
       with:
         path: |
-          .nuke/temp
+           .fallout/temp
           ~/.nuget/packages
         key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj', '**/Directory.Packages.props') }}
 
@@ -85,7 +85,7 @@ runs:
         if [ -z "$BUILD_COMMAND" ]; then
           BUILD_COMMAND='dotnet pack --no-build --configuration Release'
         fi
-        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj Pack --root . --build-command "$BUILD_COMMAND"
+        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj Pack --root . --build-command "$BUILD_COMMAND"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -108,14 +108,14 @@ runs:
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}"
+        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}"
       shell: bash
 
     - name: Create release
       if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj CreateRelease --root . --tag "v${{ env.Version }}"
+        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj CreateRelease --root . --tag "v${{ env.Version }}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}

@@ -7,21 +7,20 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
-using Nuke.Common;
-using Nuke.Common.CI.GitHubActions;
-using Nuke.Common.Git;
-using Nuke.Common.IO;
-using Nuke.Common.Tooling;
-using Nuke.Common.Tools.DotNet;
-using Nuke.Common.Tools.Git;
-using Nuke.Common.Tools.GitHub;
-using Nuke.Common.Tools.MinVer;
-using Nuke.Common.Utilities;
-using Nuke.Common.Utilities.Collections;
+using Fallout.Common;
+using Fallout.Common.CI.GitHubActions;
+using Fallout.Common.Git;
+using Fallout.Common.IO;
+using Fallout.Common.Tooling;
+using Fallout.Common.Tools.DotNet;
+using Fallout.Common.Tools.Git;
+using Fallout.Common.Tools.GitHub;
+using Fallout.Common.Tools.MinVer;
+using Fallout.Common.Utilities;
+using Fallout.Common.Utilities.Collections;
 using Numerge;
 using Octokit;
 using Octokit.Internal;
@@ -30,26 +29,20 @@ using Utils;
 using Repository = NuGet.Protocol.Core.Types.Repository;
 // ReSharper disable AllUnderscoreLocalParameterName
 
-[PublicAPI]
-class Build : NukeBuild
+class Build : FalloutBuild
 {
-    [Nuke.Common.Parameter(Name = "dry-run")] public bool IsDryRun { get; set; }
+    [Fallout.Common.Parameter(Name = "dry-run")] public bool IsDryRun { get; set; }
 
-    [Nuke.Common.Parameter(Name = "nuget-feed-url")]
+    [Fallout.Common.Parameter(Name = "nuget-feed-url")]
     public string NuGetFeedUrl { get; set; }
         = "https://api.nuget.org/v3/index.json";
 
-    [Secret] [Nuke.Common.Parameter(Name = "nuget-api-key")] public string? NugetApiKey { get; set; }
+    [Secret] [Fallout.Common.Parameter(Name = "nuget-api-key")] public string? NugetApiKey { get; set; }
 
-    [Nuke.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
+    [Fallout.Common.Parameter(Name = "tag")] public string? Tag { get; set; }
 
-    [Nuke.Common.Parameter(Name = "build-command")] public string? BuildCommand { get; set; }
+    [Fallout.Common.Parameter(Name = "build-command")] public string? BuildCommand { get; set; }
 
-    /// Support plugins are available for:
-    ///   - JetBrains ReSharper        https://nuke.build/resharper
-    ///   - JetBrains Rider            https://nuke.build/rider
-    ///   - Microsoft VisualStudio     https://nuke.build/visualstudio
-    ///   - Microsoft VSCode           https://nuke.build/vscode
     public static int Main() => Execute<Build>(x => x.Info);
 
     Target Info => _ => _
@@ -87,7 +80,7 @@ class Build : NukeBuild
                 var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
                 var credentials = new Credentials(GitHubActions.Instance.Token);
                 GitHubTasks.GitHubClient = new GitHubClient(
-                    new ProductHeaderValue(nameof(NukeBuild)),
+                    new ProductHeaderValue(nameof(FalloutBuild)),
                     new InMemoryCredentialStore(credentials));
 
                 var generatedReleaseNotes = await GitHubTasks.GitHubClient.Repository.Release
@@ -98,11 +91,11 @@ class Build : NukeBuild
             else
             {
                 Log.Information("Current commit doesn't have a tag. Resolving version via minver");
-                var (minver, _) = MinVerTasks.MinVer(s => s
+                var minver = MinVerTasks.MinVer(s => s
                     .SetTagPrefix("v")
-                    .SetDefaultPreReleasePhase("nightly")
-                    .DisableProcessLogOutput());
-                var version = minver.Version;
+                    .SetDefaultPreReleaseIdentifiers("nightly")
+                    .SetVerbosity(MinVerVerbosity.Error));
+                var version = minver.Result.Version;
                 var lastCommitMessage = GitTasks.Git("log -1 --pretty=%B")
                     .Select(output => output.Text)
                     .JoinNewLine();
@@ -176,7 +169,7 @@ class Build : NukeBuild
 
             Log.Information("Executing {Command} with {Parameters}", executable, buildCommand);
             var buildProcess = ProcessTasks.StartProcess(executable, buildCommand, workingDirectory: RootDirectory,
-                logger: DotNetTasks.DotNetLogger);
+                logger: (_, message) => Log.Information(message));
             buildProcess.AssertZeroExitCode();
         });
 
@@ -262,7 +255,7 @@ class Build : NukeBuild
             var (owner, name) = (gitRepository.GetGitHubOwner(), gitRepository.GetGitHubName());
             var credentials = new Credentials(GitHubActions.Instance.Token);
             GitHubTasks.GitHubClient = new GitHubClient(
-                new ProductHeaderValue(nameof(NukeBuild)),
+                new ProductHeaderValue(nameof(FalloutBuild)),
                 new InMemoryCredentialStore(credentials));
 
             var releaseNotes = await GitHubTasks.GitHubClient.Repository.Release
