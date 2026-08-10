@@ -296,8 +296,9 @@ class Build : FalloutBuild
     {
         using var zipArchive = ZipFile.OpenRead(path);
         return zipArchive.Entries
-            .FirstOrDefault(entry => !entry.FullName.Contains('/') && entry.FullName.EndsWith(".nuspec"))
-            ?.Name.TrimEnd(".nuspec");
+            .FirstOrDefault(entry => !entry.FullName.Contains('/') &&
+                                     entry.Name.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase))
+            ?.Name[..^".nuspec".Length];
     }
 
     private async Task HideOutdatedPackages(SourceRepository sourceRepository, VersionsCollection oldVersions,
