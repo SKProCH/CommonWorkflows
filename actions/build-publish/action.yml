@@ -14,7 +14,7 @@ inputs:
   test-command:
     description: 'Command to run tests before building'
     required: false
-    default: 'dotnet test'
+    default: 'dotnet test --no-restore'
   nuget-user:
     description: 'NuGet uset to publish packages via trusted publishing'
     required: true
@@ -48,11 +48,20 @@ runs:
       run: dotnet workload restore
       shell: bash
 
+    - name: Restore dependencies
+      run: dotnet restore
+      shell: bash
+
     - name: 'Install minver'
       run: dotnet tool install --global minver-cli
       shell: bash
 
-    - name: Run tests
+    - name: Build
+      if: ${{ inputs.build-command == '' }}
+      run: dotnet build --no-restore --configuration Release
+      shell: bash
+
+    - name: Test
       run: ${{ inputs.test-command }}
       shell: bash
 
@@ -69,10 +78,14 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
 
-    - name: Resolve version and build project
+    - name: Pack
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj Pack --root . --build-command "${{ inputs.build-command }}"
+        BUILD_COMMAND="${{ inputs.build-command }}"
+        if [ -z "$BUILD_COMMAND" ]; then
+          BUILD_COMMAND='dotnet pack --no-build --configuration Release'
+        fi
+        dotnet run --project $ACTION_PATH/../../.nuke/_build.csproj Pack --root . --build-command "$BUILD_COMMAND"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}

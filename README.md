@@ -8,7 +8,7 @@ Some github actions I use for my .NET libraries/projects.
 
 It basically automates the whole release flow for a NuGet package:
 1. Calculates version using `minver` (based on git tags).
-2. Builds and packs.
+2. Restores dependencies, runs tests, then builds and packs.
 3. Publishes to NuGet using Trusted Publishing (OIDC) - so no more leaking API keys.
 4. If it's a tag, it creates a GitHub release/forms changelog from PRs.
 5. If it's a nightly build, it can push to NuGet too and even hide older nightly versions so your package page doesn't look like a mess.
@@ -68,8 +68,8 @@ You need to set this up once on NuGet.org so you don't have to deal with secrets
 - `nuget-user` (**Required**): Your NuGet username for Trusted Publishing.
 - `publish-nightly` (**Required**): Set `true` to push non-tagged builds to NuGet (uses `-nightly` suffix).
 - `only-build`: Set `true` to skip pushing anything. Useful for PR checks.
-- `build-command`: Override the default `dotnet pack`. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
-- `test-command`: Optional override for the test command. Defaults to `dotnet test` and runs before building and packing.
+- `build-command`: Optional override for the build and pack command. Without it, the action runs separate `dotnet build` and `dotnet pack --no-build` steps, so compilation and packing failures are reported separately. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
+- `test-command`: Optional override for the test command. Defaults to `dotnet test --no-restore` and runs after restore, before building and packing.
 - `github-token`: Token for GitHub API. Defaults to `${{ github.token }}`.
 
 ### Numerge support
