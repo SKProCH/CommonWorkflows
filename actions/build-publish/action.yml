@@ -100,8 +100,40 @@ runs:
     - name: Publish to Nuget
       if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
       run: |
-        dotnet nuget push "**/*.nupkg" --api-key ${{steps.nuget-login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate
-        dotnet nuget push "**/*.snupkg" --api-key ${{steps.nuget-login.outputs.NUGET_API_KEY}} --source https://api.nuget.org/v3/index.json --skip-duplicate || true
+        package_directory="$RUNNER_TEMP/commonworkflows-packages"
+        rm -rf "$package_directory"
+        mkdir -p "$package_directory"
+
+        # Collect only packages produced for this run. This avoids publishing
+        # unrelated packages from other projects or stale output directories.
+        find . -type f \( -name "*.${Version}.nupkg" -o -name "*.${Version}.snupkg" \) \
+          -not -path './.git/*' \
+          -exec cp --parents '{}' "$package_directory" \;
+
+        mapfile -t packages < <(find "$package_directory" -type f -name '*.nupkg')
+        if ((${#packages[@]} == 0)); then
+          echo "No NuGet packages for version ${Version} were produced" >&2
+          exit 1
+        fi
+
+        for package in "${packages[@]}"; do
+          dotnet nuget push "$package" \
+            --api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        done
+
+        mapfile -t symbol_packages < <(find "$package_directory" -type f -name '*.snupkg')
+        if ((${#symbol_packages[@]} == 0)); then
+          echo "No symbol packages for version ${Version} were produced; skipping symbols publish"
+        else
+          for package in "${symbol_packages[@]}"; do
+            dotnet nuget push "$package" \
+              --api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+        fi
       shell: bash
 
     - name: Hide old versions from Nuget
