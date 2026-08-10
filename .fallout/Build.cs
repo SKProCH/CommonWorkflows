@@ -266,9 +266,9 @@ class Build : FalloutBuild
             {
                 oldRelease = await GitHubTasks.GitHubClient.Repository.Release.Get(owner, name, Tag);
             }
-            catch (Exception)
+            catch (NotFoundException)
             {
-                // ignored
+                // The release does not exist yet.
             }
 
             var nuGetVersion = NuGetVersion.Parse(Tag.Trim('v'));
