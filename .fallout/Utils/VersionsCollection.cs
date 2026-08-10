@@ -23,8 +23,10 @@ public class VersionsCollection : IReadOnlyList<VersionsCollection.VersionInfo>
 
     public bool IsNightlyVersionSuperseded(NuGetVersion target)
     {
-        var targetVersionString = target.ToString();
-        if (this.Any(info => targetVersionString.Contains(info.VersionString)))
+        if (this.Any(info => info.Version is not null &&
+                             info.Version.Major == target.Major &&
+                             info.Version.Minor == target.Minor &&
+                             info.Version.Patch == target.Patch))
         {
             return true;
         }
