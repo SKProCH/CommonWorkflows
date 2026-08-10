@@ -11,6 +11,10 @@ inputs:
   build-command:
     description: 'Overrides a build command'
     required: false
+  test-command:
+    description: 'Command to run tests before building'
+    required: false
+    default: 'dotnet test'
   nuget-user:
     description: 'NuGet uset to publish packages via trusted publishing'
     required: true
@@ -46,6 +50,10 @@ runs:
 
     - name: 'Install minver'
       run: dotnet tool install --global minver-cli
+      shell: bash
+
+    - name: Run tests
+      run: ${{ inputs.test-command }}
       shell: bash
 
     - name: 'Resolve version'

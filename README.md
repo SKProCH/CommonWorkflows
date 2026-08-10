@@ -69,6 +69,7 @@ You need to set this up once on NuGet.org so you don't have to deal with secrets
 - `publish-nightly` (**Required**): Set `true` to push non-tagged builds to NuGet (uses `-nightly` suffix).
 - `only-build`: Set `true` to skip pushing anything. Useful for PR checks.
 - `build-command`: Override the default `dotnet pack`. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
+- `test-command`: Optional override for the test command. Defaults to `dotnet test` and runs before building and packing.
 - `github-token`: Token for GitHub API. Defaults to `${{ github.token }}`.
 
 ### Numerge support
