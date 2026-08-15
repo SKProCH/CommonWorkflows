@@ -48,7 +48,7 @@ jobs:
       with:
         dotnet-version: 10
     - name: Build and Publish
-      uses: SKProCH/CommonWorkflows/actions/build-publish@v1
+      uses: SKProCH/CommonWorkflows/actions/build-publish@main
       with:
           publish-nightly: true
           nuget-user: ${{ secrets.NUGET_USER }}
