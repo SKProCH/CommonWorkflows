@@ -25,13 +25,12 @@ name: Build and publish
 on:
   push:
     branches:
-      - master
-      - main
-      - release/**
+      - '**'
     paths-ignore:
       - Material.Avalonia.Demo*/** # Ignore demo projects, do not trigger builds for them
     tags:
       - v**
+  pull_request:
 
 permissions:
   id-token: write
@@ -71,6 +70,12 @@ You need to set this up once on NuGet.org so you don't have to deal with secrets
 - `build-command`: Optional override for the build/pack command. Without it, the C# pipeline runs restore, build, test and pack with `Release` configuration. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
 - `test-command`: Optional override for the test command. After the standard Release build it defaults to `dotnet test --no-build --no-restore --configuration Release`. With `build-command`, tests may build their projects before the custom pack command runs.
 - `github-token`: Token for GitHub API. Defaults to `${{ github.token }}`.
+
+### Workflow triggers
+
+Use `push` with `branches: ['**']` and `pull_request` to validate every branch and pull request, including contributions in fork repositories. The action applies the publication policy itself, so the workflow does not need a branch allow-list for publishing.
+
+You can still narrow `branches`, add `paths-ignore`, or omit `pull_request` when a repository does not need validation for those events. These filters control whether CI starts; they do not grant publishing permission.
 
 ### Publishing policy
 
