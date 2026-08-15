@@ -1,9 +1,10 @@
 name: 'Build and Publish'
-description: 'Builds and publishes NuGet packages using NUKE'
+description: 'Builds and publishes NuGet packages using Fallout'
 inputs:
   publish-nightly:
     description: 'Should nightly versions be published to feeds'
-    required: true
+    required: false
+    default: 'false'
   only-build:
     description: 'If this should only build package, and disable any publishing'
     required: false
@@ -14,10 +15,9 @@ inputs:
   test-command:
     description: 'Command to run tests before building'
     required: false
-    default: 'dotnet test --no-restore'
   nuget-user:
-    description: 'NuGet uset to publish packages via trusted publishing'
-    required: true
+    description: 'NuGet user used to publish packages via trusted publishing'
+    required: false
   github-token:
     description: 'GitHub Token'
     required: false
@@ -26,128 +26,39 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: 'Fetch git tree history to calculate tags'
-      run: |
-        git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-        if [ -f "$(git rev-parse --git-dir)/shallow" ]; then
-          git fetch --no-recurse-submodules --unshallow --tags --prune --filter=tree:0 origin
-        else
-          git fetch --no-recurse-submodules --tags --prune --filter=tree:0 origin
-        fi
-      shell: bash
-      
-    - name: 'Cache: .fallout/temp, ~/.nuget/packages'
-      uses: actions/cache@v3
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
       with:
-        path: |
-           .fallout/temp
-          ~/.nuget/packages
-        key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj', '**/Directory.Packages.props') }}
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-${{ hashFiles('**/global.json', '**/*.csproj', '**/Directory.*.props', '**/Directory.*.targets', '**/packages.lock.json', '**/NuGet.config', '**/Directory.Packages.props') }}
 
-    - name: 'Restore workloads'
-      run: dotnet workload restore
-      shell: bash
-
-    - name: Restore dependencies
-      run: dotnet restore
-      shell: bash
-
-    - name: 'Install minver'
-      run: dotnet tool install --global minver-cli
-      shell: bash
-
-    - name: Build
-      if: ${{ inputs.build-command == '' }}
-      run: dotnet build --no-restore --configuration Release
-      shell: bash
-
-    - name: Test
-      run: ${{ inputs.test-command }}
-      shell: bash
-
-    - name: 'Resolve version'
-      run: |
-        VERSION=$(minver -t v -p nightly -v error)
-        echo "Version=${VERSION}" >> $GITHUB_ENV
-        if git describe --exact-match --tags $(git rev-parse HEAD) > /dev/null 2>&1; then
-          echo "HasTag=true" >> $GITHUB_ENV
-        else
-          echo "HasTag=false" >> $GITHUB_ENV
-        fi
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-
-    - name: Pack
-      run: |
-        ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        BUILD_COMMAND="${{ inputs.build-command }}"
-        if [ -z "$BUILD_COMMAND" ]; then
-          BUILD_COMMAND='dotnet pack --no-build --configuration Release'
-        fi
-        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj Pack --root . --build-command "$BUILD_COMMAND"
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-        
     - name: NuGet login (OIDC → temp API key)
-      if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
+      if: >-
+        ${{
+          inputs.only-build != 'true' &&
+          github.event_name == 'push' &&
+          github.event.repository.fork != true &&
+          inputs.nuget-user != '' &&
+          (
+            github.ref_type == 'tag' ||
+            (inputs.publish-nightly == 'true' && github.ref_name == github.event.repository.default_branch)
+          )
+        }}
       uses: NuGet/login@v1
       id: nuget-login
       with:
         user: ${{ inputs.nuget-user }}
 
-    - name: Publish to Nuget
-      if: "${{ inputs.only-build != 'true' && (env.HasTag == 'true' || inputs.publish-nightly == 'true') }}"
-      run: |
-        package_directory="$RUNNER_TEMP/commonworkflows-packages"
-        rm -rf "$package_directory"
-        mkdir -p "$package_directory"
-
-        # Collect only packages produced for this run. This avoids publishing
-        # unrelated packages from other projects or stale output directories.
-        find . -type f \( -name "*.${Version}.nupkg" -o -name "*.${Version}.snupkg" \) \
-          -not -path './.git/*' \
-          -exec cp --parents '{}' "$package_directory" \;
-
-        mapfile -t packages < <(find "$package_directory" -type f -name '*.nupkg')
-        if ((${#packages[@]} == 0)); then
-          echo "No NuGet packages for version ${Version} were produced" >&2
-          exit 1
-        fi
-
-        for package in "${packages[@]}"; do
-          dotnet nuget push "$package" \
-            --api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
-        done
-
-        mapfile -t symbol_packages < <(find "$package_directory" -type f -name '*.snupkg')
-        if ((${#symbol_packages[@]} == 0)); then
-          echo "No symbol packages for version ${Version} were produced; skipping symbols publish"
-        else
-          for package in "${symbol_packages[@]}"; do
-            dotnet nuget push "$package" \
-              --api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}" \
-              --source https://api.nuget.org/v3/index.json \
-              --skip-duplicate
-          done
-        fi
-      shell: bash
-
-    - name: Hide old versions from Nuget
-      if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
+    - name: Build and publish
       run: |
         ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj HideOutdatedNightlyPackages --root . --nuget-api-key "${{steps.nuget-login.outputs.NUGET_API_KEY}}"
-      shell: bash
-
-    - name: Create release
-      if: "${{ inputs.only-build != 'true' && env.HasTag == 'true' }}"
-      run: |
-        ACTION_PATH=$(echo "${{ github.action_path }}" | tr '\\' '/')
-        dotnet run --project $ACTION_PATH/../../.fallout/_build.csproj CreateRelease --root . --tag "v${{ env.Version }}"
+        dotnet run --project "$ACTION_PATH/../../.fallout/_build.csproj" Pipeline --root . \
+          --only-build "${ONLY_BUILD}" --publish-nightly "${PUBLISH_NIGHTLY}"
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        ONLY_BUILD: ${{ inputs.only-build }}
+        PUBLISH_NIGHTLY: ${{ inputs.publish-nightly }}
+        BUILD_COMMAND: ${{ inputs.build-command }}
+        TEST_COMMAND: ${{ inputs.test-command }}

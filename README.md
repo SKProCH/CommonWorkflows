@@ -2,13 +2,13 @@
 
 Some github actions I use for my .NET libraries/projects.
 
-**Warning:** This is very opinionated and probably only works for my specific project structure (uses NUKE, minver, etc). Don't expect it to be a general-purpose tool.
+**Warning:** This is very opinionated and probably only works for my specific project structure (uses Fallout, MinVer, etc). Don't expect it to be a general-purpose tool.
 
 ## What it does
 
 It basically automates the whole release flow for a NuGet package:
 1. Calculates version using `minver` (based on git tags).
-2. Restores dependencies, runs tests, then builds and packs.
+2. Restores dependencies, builds, runs tests against the build, then packs.
 3. Publishes to NuGet using Trusted Publishing (OIDC) - so no more leaking API keys.
 4. If it's a tag, it creates a GitHub release/forms changelog from PRs.
 5. If it's a nightly build, it can push to NuGet too and even hide older nightly versions so your package page doesn't look like a mess.
@@ -49,7 +49,7 @@ jobs:
       with:
         dotnet-version: 10
     - name: Build and Publish
-      uses: SKProCH/CommonWorkflows/actions/build-publish@main
+      uses: SKProCH/CommonWorkflows/actions/build-publish@v1
       with:
           publish-nightly: true
           nuget-user: ${{ secrets.NUGET_USER }}
@@ -65,12 +65,23 @@ You need to set this up once on NuGet.org so you don't have to deal with secrets
 
 ### Inputs
 
-- `nuget-user` (**Required**): Your NuGet username for Trusted Publishing.
-- `publish-nightly` (**Required**): Set `true` to push non-tagged builds to NuGet (uses `-nightly` suffix).
+- `nuget-user`: Your NuGet username for Trusted Publishing. Required only when this run is allowed to publish.
+- `publish-nightly`: Set `true` to allow nightly publishing from the default branch of the original repository. Feature branches, pull requests and forks always run build/test/pack only.
 - `only-build`: Set `true` to skip pushing anything. Useful for PR checks.
-- `build-command`: Optional override for the build and pack command. Without it, the action runs separate `dotnet build` and `dotnet pack --no-build` steps, so compilation and packing failures are reported separately. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
-- `test-command`: Optional override for the test command. Defaults to `dotnet test --no-restore` and runs after restore, before building and packing.
+- `build-command`: Optional override for the build/pack command. Without it, the C# pipeline runs restore, build, test and pack with `Release` configuration. You can use `{VERSION}` and `{RELEASENOTES}` as placeholders.
+- `test-command`: Optional override for the test command. After the standard Release build it defaults to `dotnet test --no-build --no-restore --configuration Release`. With `build-command`, tests may build their projects before the custom pack command runs.
 - `github-token`: Token for GitHub API. Defaults to `${{ github.token }}`.
+
+### Publishing policy
+
+Publishing is decided automatically by the action:
+
+- Push to the default branch of the original repository: nightly publishing is allowed when `publish-nightly: true`.
+- Push of a tag in the original repository: release publishing is allowed.
+- Feature branches, `release/**` branches, pull requests and forks: build/test/pack only.
+- `only-build: true`: always disables publishing.
+
+The workflow therefore does not need to contain the repository name or an explicit branch allow-list. Forks can use the same workflow for validation without receiving publish credentials.
 
 ### Numerge support
 

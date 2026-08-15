@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGet.Versioning;
@@ -15,18 +16,17 @@ using Fallout.Common.CI.GitHubActions;
 using Fallout.Common.Git;
 using Fallout.Common.IO;
 using Fallout.Common.Tooling;
-using Fallout.Common.Tools.DotNet;
 using Fallout.Common.Tools.Git;
 using Fallout.Common.Tools.GitHub;
 using Fallout.Common.Tools.MinVer;
 using Fallout.Common.Utilities;
-using Fallout.Common.Utilities.Collections;
 using Numerge;
 using Octokit;
 using Octokit.Internal;
 using Serilog;
 using Utils;
 using Repository = NuGet.Protocol.Core.Types.Repository;
+
 // ReSharper disable AllUnderscoreLocalParameterName
 
 class Build : FalloutBuild
@@ -43,7 +43,24 @@ class Build : FalloutBuild
 
     [Fallout.Common.Parameter(Name = "build-command")] public string? BuildCommand { get; set; }
 
+    [Fallout.Common.Parameter(Name = "test-command")] public string? TestCommand { get; set; }
+
+    [Fallout.Common.Parameter(Name = "only-build")] public bool OnlyBuild { get; set; }
+
+    [Fallout.Common.Parameter(Name = "publish-nightly")] public bool PublishNightly { get; set; }
+
     public static int Main() => Execute<Build>(x => x.Info);
+
+    void LoadEnvironmentInputs()
+    {
+        BuildCommand ??= Environment.GetEnvironmentVariable("BUILD_COMMAND");
+        TestCommand ??= Environment.GetEnvironmentVariable("TEST_COMMAND");
+        NugetApiKey ??= Environment.GetEnvironmentVariable("NUGET_API_KEY");
+        OnlyBuild |= string.Equals(Environment.GetEnvironmentVariable("ONLY_BUILD"), "true",
+            StringComparison.OrdinalIgnoreCase);
+        PublishNightly |= string.Equals(Environment.GetEnvironmentVariable("PUBLISH_NIGHTLY"), "true",
+            StringComparison.OrdinalIgnoreCase);
+    }
 
     Target Info => _ => _
         .Executes(() =>
@@ -53,7 +70,186 @@ class Build : FalloutBuild
 
     PackVersion? PackVersion;
 
+    enum PublicationMode
+    {
+        BuildOnly,
+        PublishNightly,
+        PublishRelease
+    }
+
+    sealed record PublicationPolicy(PublicationMode Mode, string Reason);
+
+    PublicationPolicy ResolvePublicationPolicy()
+    {
+        var onlyBuild = OnlyBuild ||
+                        string.Equals(Environment.GetEnvironmentVariable("ONLY_BUILD"), "true",
+                            StringComparison.OrdinalIgnoreCase);
+        var publishNightly = PublishNightly ||
+                             string.Equals(Environment.GetEnvironmentVariable("PUBLISH_NIGHTLY"), "true",
+                                 StringComparison.OrdinalIgnoreCase);
+
+        if (onlyBuild)
+            return new(PublicationMode.BuildOnly, "only-build was enabled");
+
+        var eventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
+        var refType = Environment.GetEnvironmentVariable("GITHUB_REF_TYPE");
+        var refName = Environment.GetEnvironmentVariable("GITHUB_REF_NAME");
+        var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        var isFork = false;
+        var defaultBranch = string.Empty;
+        if (!string.IsNullOrWhiteSpace(eventPath) && File.Exists(eventPath))
+        {
+            using var eventDocument = JsonDocument.Parse(File.ReadAllText(eventPath));
+            if (eventDocument.RootElement.TryGetProperty("repository", out var repository))
+            {
+                isFork = repository.TryGetProperty("fork", out var fork) && fork.GetBoolean();
+                defaultBranch = repository.TryGetProperty("default_branch", out var branch)
+                    ? branch.GetString() ?? string.Empty
+                    : string.Empty;
+            }
+        }
+
+        if (isFork)
+            return new(PublicationMode.BuildOnly, "the repository is a fork");
+        if (!string.Equals(eventName, "push", StringComparison.OrdinalIgnoreCase))
+            return new(PublicationMode.BuildOnly, "publishing is allowed only for push events");
+        if (string.Equals(refType, "tag", StringComparison.OrdinalIgnoreCase))
+            return new(PublicationMode.PublishRelease, "the push is a tag");
+        if (publishNightly && string.Equals(refType, "branch", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(refName, defaultBranch, StringComparison.OrdinalIgnoreCase))
+            return new(PublicationMode.PublishNightly, "the push is to the default branch");
+
+        return new(PublicationMode.BuildOnly, "the push is not to the default branch");
+    }
+
+    void RunCommand(string executable, string arguments)
+    {
+        using var process = ProcessTasks.StartProcess(executable, arguments, RootDirectory,
+            logger: (_, message) => Log.Information(message));
+        process.AssertZeroExitCode();
+    }
+
+    void RunCommandLine(string command)
+    {
+        var separator = command.IndexOf(' ');
+        var executable = separator < 0 ? command : command[..separator];
+        var arguments = separator < 0 ? string.Empty : command[(separator + 1)..].Trim();
+        RunCommand(executable, arguments);
+    }
+
+    ImmutableArray<string> FindPackages(string version, string extension) =>
+        RootDirectory.GlobFiles($"**/*.{version}.{extension}")
+            .Select(path => path.ToString())
+            .ToImmutableArray();
+
+    void PublishPackages(IEnumerable<string> packages)
+    {
+        ArgumentNullException.ThrowIfNull(NugetApiKey);
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
+            Console.WriteLine($"::add-mask::{NugetApiKey}");
+        foreach (var package in packages)
+        {
+            Log.Information("Publishing {Package}", package);
+            RunCommand("dotnet",
+                $"nuget push \"{package}\" --api-key \"{NugetApiKey}\" --source \"{NuGetFeedUrl}\" --skip-duplicate");
+        }
+    }
+
+    void WriteSummary(PublicationPolicy policy, IEnumerable<string> packages, IEnumerable<string> symbols)
+    {
+        var summary = Environment.GetEnvironmentVariable("GITHUB_STEP_SUMMARY");
+        if (string.IsNullOrWhiteSpace(summary))
+            return;
+        File.AppendAllText(summary,
+            $"## CommonWorkflows\n\n- Mode: `{policy.Mode}`\n- Reason: {policy.Reason}\n- Version: `{PackVersion?.Version ?? "unknown"}`\n- Packages: {string.Join(", ", packages.Select(Path.GetFileName))}\n- Symbols: {string.Join(", ", symbols.Select(Path.GetFileName))}\n");
+    }
+
+    Target Pipeline => _ => _
+        .DependsOn(FetchHistory, PublishPackagesTarget, HideOutdatedNightlyPackages, CreateRelease)
+        .Executes(() =>
+        {
+            LoadEnvironmentInputs();
+            var policy = ResolvePublicationPolicy();
+            Log.Information("Pipeline mode: {Mode}. Reason: {Reason}", policy.Mode, policy.Reason);
+            WriteSummary(policy, FindPackages(PackVersion!.Version, "nupkg"),
+                FindPackages(PackVersion.Version, "snupkg"));
+        });
+
+    Target PublishPackagesTarget => _ => _
+        .DependsOn(Pack)
+        .OnlyWhenDynamic(() => ResolvePublicationPolicy().Mode != PublicationMode.BuildOnly)
+        .Executes(() =>
+        {
+            NugetApiKey ??= Environment.GetEnvironmentVariable("NUGET_API_KEY");
+            if (string.IsNullOrWhiteSpace(NugetApiKey))
+                throw new InvalidOperationException(
+                    "NuGet publishing is enabled, but no OIDC API key is available. Check nuget-user and id-token: write permission.");
+            var packages = FindPackages(PackVersion!.Version, "nupkg");
+            var symbols = FindPackages(PackVersion.Version, "snupkg");
+            if (packages.Length == 0)
+                throw new InvalidOperationException(
+                    $"No NuGet packages for version {PackVersion.Version} were produced");
+
+            PublishPackages(packages);
+            if (symbols.Length > 0)
+                PublishPackages(symbols);
+            else
+                Log.Information("No symbol packages for version {Version}; skipping symbols publish",
+                    PackVersion.Version);
+        });
+
+    Target FetchHistory => _ => _
+        .Executes(() =>
+        {
+            RunCommand("git", "config remote.origin.fetch \"+refs/heads/*:refs/remotes/origin/*\"");
+            using var shallowCheck = ProcessTasks.StartProcess(GitTasks.GitPath,
+                "rev-parse --is-shallow-repository", RootDirectory,
+                logger: (_, _) =>
+                {
+                });
+            shallowCheck.AssertWaitForExit();
+            var unshallow = shallowCheck.Output.FirstOrDefault().Text.Trim()
+                .Equals("true", StringComparison.OrdinalIgnoreCase)
+                ? "--unshallow "
+                : string.Empty;
+            RunCommand("git", $"fetch --no-recurse-submodules {unshallow}--tags --prune --filter=tree:0 origin");
+        });
+
+    Target Restore => _ => _
+        .Executes(() =>
+        {
+            RunCommand("dotnet", "workload restore");
+            RunCommand("dotnet", "restore");
+        });
+
+    Target DotNetBuildTarget => _ => _
+        .DependsOn(Restore, ResolveVersion)
+        .Executes(() =>
+        {
+            LoadEnvironmentInputs();
+            BuildCommand ??= Environment.GetEnvironmentVariable("BUILD_COMMAND");
+            if (!string.IsNullOrWhiteSpace(BuildCommand))
+                return;
+
+            RunCommand("dotnet", $"build --no-restore --configuration Release /p:Version={PackVersion!.Version}");
+        });
+
+    Target Test => _ => _
+        .DependsOn(DotNetBuildTarget)
+        .Executes(() =>
+        {
+            LoadEnvironmentInputs();
+            TestCommand ??= Environment.GetEnvironmentVariable("TEST_COMMAND");
+            var command = string.IsNullOrWhiteSpace(TestCommand)
+                ? string.IsNullOrWhiteSpace(BuildCommand)
+                    ? "dotnet test --no-build --no-restore --configuration Release"
+                    : "dotnet test --no-restore --configuration Release"
+                : TestCommand!;
+            RunCommandLine(command);
+        });
+
     Target ResolveVersion => _ => _
+        .DependsOn(FetchHistory)
         .Executes(async () =>
         {
             Log.Information("Resolving is current commit has tag");
@@ -66,14 +262,25 @@ class Build : FalloutBuild
                 {
                 });
             gitFindIsCurrentCommitHasTag.AssertWaitForExit();
-            var tagFound = gitFindIsCurrentCommitHasTag.ExitCode == 0;
+            var githubRefType = Environment.GetEnvironmentVariable("GITHUB_REF_TYPE");
+            var tagFound = string.IsNullOrWhiteSpace(githubRefType)
+                ? gitFindIsCurrentCommitHasTag.ExitCode == 0
+                : string.Equals(githubRefType, "tag", StringComparison.OrdinalIgnoreCase);
 
             if (tagFound)
             {
                 Log.Information("Current commit has tag. Resolving version via git tag");
-                var tag = GitTasks.Git($"describe --tags {commitHash}")
-                    .First().Text;
-                var version = tag.TrimStart('v');
+                var tag = Environment.GetEnvironmentVariable("GITHUB_REF_NAME") ??
+                          GitTasks.Git($"describe --tags {commitHash}").First().Text;
+                Tag = tag.Trim();
+                var version = Tag.TrimStart('v');
+
+                if (ResolvePublicationPolicy().Mode != PublicationMode.PublishRelease)
+                {
+                    PackVersion = new PackVersion(version, CreateCommitReleaseNotes(commitHash));
+                    Log.Information("Release notes API call skipped because this is not a publishable release run");
+                    return;
+                }
 
                 var gitRepository = GitRepository.FromLocalDirectory(RootDirectory);
 
@@ -96,34 +303,38 @@ class Build : FalloutBuild
                     .SetDefaultPreReleaseIdentifiers("nightly")
                     .SetVerbosity(MinVerVerbosity.Error));
                 var version = minver.Result.Version;
-                var lastCommitMessage = GitTasks.Git("log -1 --pretty=%B")
-                    .Select(output => output.Text)
-                    .JoinNewLine();
-
-                var commitUrl = $"{GitHubActions.Instance.ServerUrl}/" +
-                                $"{GitHubActions.Instance.Repository}/" +
-                                $"commit/" +
-                                $"{commitHash}";
-
-                var releaseNotes = $"This version based on commit {commitUrl}\n\n{lastCommitMessage}";
-                PackVersion = new PackVersion(version, releaseNotes);
+                PackVersion = new PackVersion(version, CreateCommitReleaseNotes(commitHash));
             }
 
             Log.Information("Resolved version information is {Info}", PackVersion);
         });
 
+    string CreateCommitReleaseNotes(string commitHash)
+    {
+        var serverUrl = Environment.GetEnvironmentVariable("GITHUB_SERVER_URL");
+        var repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        var commitUrl = string.IsNullOrWhiteSpace(serverUrl) || string.IsNullOrWhiteSpace(repository)
+            ? commitHash
+            : $"{serverUrl}/{repository}/commit/{commitHash}";
+        var lastCommitMessage = GitTasks.Git("log -1 --pretty=%B")
+            .Select(output => output.Text)
+            .JoinNewLine();
+        return $"This version based on commit {commitUrl}\n\n{lastCommitMessage}";
+    }
+
     Target Compile => _ => _
-        .DependsOn(ResolveVersion)
+        .DependsOn(Test)
         .Executes(() =>
         {
-            Debug.Assert(PackVersion is not null);
-            Log.Information("Start building project");
-            var buildCommand = BuildCommand;
-
-            if (buildCommand is null || buildCommand.IsEmpty())
+            if (string.IsNullOrWhiteSpace(BuildCommand))
             {
-                buildCommand = "dotnet pack";
+                RunCommand("dotnet",
+                    $"pack --no-build --configuration Release /p:Version={PackVersion!.Version} /p:PackageReleaseNotes=\"{PackVersion.ReleaseNotes.ReplaceMsBuildCharacters()}\"");
+                return;
             }
+
+            Debug.Assert(PackVersion is not null);
+            var buildCommand = BuildCommand!.Trim();
 
             buildCommand = buildCommand.Trim();
 
@@ -135,7 +346,8 @@ class Build : FalloutBuild
                 Log.Information("Replacing VERSION and RELEASENOTES in build command: {Command}", buildCommand);
                 buildCommand = buildCommand
                     .Replace("{VERSION}", PackVersion.Version.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded())
-                    .Replace("{RELEASENOTES}", PackVersion.ReleaseNotes.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded());
+                    .Replace("{RELEASENOTES}",
+                        PackVersion.ReleaseNotes.ReplaceMsBuildCharacters().DoubleQuoteIfNeeded());
             }
             else
             {
@@ -153,24 +365,7 @@ class Build : FalloutBuild
                 }
             }
 
-            var firstSpaceIndex = buildCommand.IndexOf(' ');
-
-            string executable;
-            if (firstSpaceIndex == -1)
-            {
-                executable = buildCommand;
-                buildCommand = null;
-            }
-            else
-            {
-                executable = buildCommand[..firstSpaceIndex];
-                buildCommand = buildCommand[firstSpaceIndex..].Trim();
-            }
-
-            Log.Information("Executing {Command} with {Parameters}", executable, buildCommand);
-            var buildProcess = ProcessTasks.StartProcess(executable, buildCommand, workingDirectory: RootDirectory,
-                logger: (_, message) => Log.Information(message));
-            buildProcess.AssertZeroExitCode();
+            RunCommandLine(buildCommand);
         });
 
     Target Numerge => _ => _
@@ -216,15 +411,19 @@ class Build : FalloutBuild
         .DependsOn(ResolveVersion, Compile, Numerge);
 
     Target HideOutdatedNightlyPackages => _ => _
+        .DependsOn(PublishPackagesTarget)
+        .OnlyWhenDynamic(() => ResolvePublicationPolicy().Mode == PublicationMode.PublishRelease)
         .Executes(async () =>
         {
+            LoadEnvironmentInputs();
             ArgumentNullException.ThrowIfNull(NugetApiKey);
 
             Log.Information("Fetching all tags reachable from current commit");
             var readOnlyCollection = GitTasks.Git("tag --merged HEAD", workingDirectory: RootDirectory);
+            var currentVersion = PackVersion?.Version ?? Tag?.TrimStart('v');
             var oldVersionsStrings = readOnlyCollection
                 .Select(output => output.Text.TrimStart('v'))
-                .Skip(1);
+                .Where(version => !string.Equals(version, currentVersion, StringComparison.OrdinalIgnoreCase));
             var versionsCollection = new VersionsCollection(oldVersionsStrings);
             Log.Information("Fetched {Count} old tags", versionsCollection.Count);
 
@@ -246,6 +445,8 @@ class Build : FalloutBuild
         });
 
     Target CreateRelease => _ => _
+        .DependsOn(HideOutdatedNightlyPackages)
+        .OnlyWhenDynamic(() => ResolvePublicationPolicy().Mode == PublicationMode.PublishRelease)
         .Executes(async () =>
         {
             ArgumentNullException.ThrowIfNull(Tag);
